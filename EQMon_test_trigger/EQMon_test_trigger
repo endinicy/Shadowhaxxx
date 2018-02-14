@@ -1,0 +1,50 @@
+import serial
+import time
+import struct
+import numpy as np
+import sys
+
+serialport='/dev/tty.usbmodemFA131'   # I think this is the front usb port on my MacBook
+ser = serial.Serial(serialport, baudrate=115200,timeout=0)
+### On windows machines, the connection takes time to be established and a time.sleep(2) command will be necessary
+
+run=False
+ser.reset_output_buffer() # get that junk outta here
+outputlist=[]
+
+while run == False:
+    print("Waiting for the Arduino")
+    time.sleep(0.2)        # checks every 0.1 seconds
+    meow = ser.read(1)
+    if meow == "g": # waiting to get the ready signal from the arduino
+        ser.write("s")     # send the start signal to the arduino
+        while run == False:
+            if ser.read(1) == "k":
+                run = True
+    
+samplecount = 0
+starttime=time.time()
+while time.time()<starttime+30:
+    #outputlist.append(ser.read(2))
+    #outputlist.append(list(ser.readline()))
+    #print(ser.in_waiting)
+    if ser.in_waiting > 4:
+        if ser.in_waiting > 60:
+            sys.exit("Arduino Buffer Overflow. Reading too slow, losing data.")
+        # rawbits = ser.read(2)
+        # print(twos_complement(rawbits, 16))
+        print([struct.unpack('<h',(ser.read(2)))[0],struct.unpack('<h',(ser.read(2)))[0]])
+        samplecount += 1
+        # newdata=[struct.unpack('H',ser.read(2))[0],struct.unpack('H',ser.read(2))[0]]
+        # print(newdata)
+        # outputlist.append(newdata)
+        # if time.time() > starttime+3: # After 3 seconds of data collection, this deletes the first entry everytime a new one is added. 
+        #     outputlist.pop(0)         # This is great because it works independent of sample rate, but any delays at the beginning will reduce output size
+        # print(str(newdata)+','+str(ser.in_waiting))
+    #time.sleep(0.01)
+# print(outputlist)
+# ser.write("x")
+print(samplecount)
+#print(outputlist)
+ser.close()
+    ###print(datetime.datetime.now().isoformat())
