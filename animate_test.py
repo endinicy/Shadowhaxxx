@@ -31,20 +31,35 @@ raw_output = 'raw_data.txt'
 
 def adsTwoChannelStream(data_q, plot_q, duration=30,):    
 #    serialport='/dev/tty.usbmodemFA131'   # I think this is the front usb port on my MacBook
-    try:
-        serialport='/dev/ttyACM0'
-        ser = serial.Serial(serialport, baudrate=115200,timeout=1)
-    except:
-        serialport='/dev/ttyACM1'
-        ser = serial.Serial(serialport, baudrate=115200,timeout=1)
+    try_ports = ['/dev/tty.usbmodemFA131','/dev/ttyACM0','/dev/ttyACM1']
+    working_ports = []
+    for port in try_ports:
+        try:
+            ser = serial.Serial(port, baudrate=115200,timeout=1)
+            working_ports.append(port)
+        except serial.SerialException, err_msg:
+            if err_msg.errno == 2:  # Error 2 is 'does not exist', we're just going to mave on
+                True
+            if err_msg.errno == 13:
+                print "Insufficient permission to open port ", port
+                
+    if len(working_ports) == 0:
+       print "Acceptible device not found at any of these ports ", try_ports
+    if len(working_ports) > 1:
+       print "Multiple ports worked, ", working_ports, ". Specify which port using 'port' argument."
+    
+    takedata = True     # variable to keep track of whether or not things are working well enough for us to take data
+    if len(working_ports) != 1:
+        takedata = False
+        
     ### On windows machines, the connection takes time to be established and a time.sleep(2) command will be necessary
 
                 # This part syncs this code with the arduino so byte ordered-ness is preserved
     run=False   # Doing this replaces delimiters which would take up serial com time
-    takedata = True     # variable to keep track of whether or not things are working well enough for us to take data
+    
     retry = 0   # counter to keep track of how many times we have tried to reset the Arduino
     
-    while run == False:
+    while run == False and takedata==True:
         print "Syncing with the Arduino... ", retry
         ser.reset_input_buffer() # get that junk outta here
         time.sleep(0.2)     # checks every 0.2 seconds
@@ -59,7 +74,7 @@ def adsTwoChannelStream(data_q, plot_q, duration=30,):
                 arduino_listen = ser.read(1)
                 if arduino_listen == "k":
                     run = True      # exit the loop and let's go!
-                    print "ONWARDSSSSss!! (2 of 2)"
+                    print "ONWARDSSSSss!! (2 of 2) \n"
                 else:
                     print "Sync Phase 2 Failed, starting over (is the Arduino running the right script?)"
                     going_back_to_gs = 1
@@ -71,7 +86,6 @@ def adsTwoChannelStream(data_q, plot_q, duration=30,):
         if retry > 10:
             print "Arduino failed 10 times"
             takedata = False    # Something is wrong with the Arduino connection (probably busy)
-            break
                     
         # I hope no one hates me for making this whole thing one function, I've had problems making global serial vars
     samplecount = 0
@@ -92,10 +106,10 @@ def adsTwoChannelStream(data_q, plot_q, duration=30,):
                 takedata=False
             samplecount += 1
 
-    ser.write("x")
-    ser.close()    
-    print("Donezo!")
-    return samplecount
+    if len(working_ports) == 1:
+        ser.write("x")
+        ser.close()    
+    print("Data Acquisition Exiting \n")
 
 
 data_queue = Queue.Queue(maxsize=100)
@@ -119,7 +133,7 @@ if outputfile == True:
 
 while plot_queue.empty(): # wait till the data starts coming
     if not thread_adsTwoChannelStream.isAlive():
-        sys.exit("Thread died: 1")
+        sys.exit("Error getting data from Arduino (1)")
 
 
 data_start_time = time.time()
@@ -128,7 +142,7 @@ alert_time = time.time()
 
 while time.time() < data_buffer_stop_time:
     if not thread_adsTwoChannelStream.isAlive():
-        sys.exit("Thread died: 2")
+        sys.exit("Error getting data from Arduino (2)")
     new_data = plot_queue.get(timeout=1)
     if outputfile == True:
         raw_data_output_file.write(new_data)
@@ -177,7 +191,7 @@ lag_data = []
 
 while not plot_queue.full() and time.time() < data_start_time + acq_time:
     if not thread_adsTwoChannelStream.isAlive():
-        sys.exit("Thread died: 3")
+        sys.exit("Error getting data from Arduino (3)")
     if not plot_queue.empty():
         new_data = plot_queue.get()
         if outputfile == True:
@@ -219,15 +233,13 @@ if plot_queue.full():
 elif outputfile:
     with open(outputfile, 'a') as the_file:
         the_file.write(str(lag_data))
-
-else:
-    print lag_data
+        
     
 if outputfile == True:
     raw_data_output_file.close()
     
 while thread_adsTwoChannelStream.isAlive():
-    print "Thread is still going...? ", plot_queue.qsize()
+    print "Waiting for Data Acquisition Script to Exit (Buffer Overflow) ", plot_queue.qsize()
     time.sleep(1)
 #stoptime=time.time() + 30
 #while (time.time() < stoptime):
