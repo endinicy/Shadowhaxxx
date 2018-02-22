@@ -1,7 +1,6 @@
 """
-
-Figure out the problem with coordinating the scripts (why do I have to run the arduino code again?)
-Would be nice to condition signal so we could increase the ADC preamp gain and 
+MAKE IT A FUNCTION!!!S
+maybe check out the awkward lag_comp script 
 
 """
 
@@ -9,7 +8,7 @@ Would be nice to condition signal so we could increase the ADC preamp gain and
 import numpy as np
 from matplotlib import pyplot as plt
 
-from xcorr_func2 import lag_xcorr
+#from xcorr_func2 import lag_xcorr
 from xcorr_func import lag_xcorr as lag_xcorr_old
 
 import Queue
@@ -25,12 +24,15 @@ import sys
 acq_time = 30 # seconds
 lagplot=False
 frame_time = 0.01
-outputfile = False
-data_buffer_length = 3 
-raw_output = 'raw_data.txt'
+outputfile = True
+data_buffer_length = 3 # seconds
+output_name = 'raw_data'
+
+if outputfile == True:
+    raw_data_output_file = open(output_name+"_raw.txt", 'w+') # opening the output files
+    lag_data_output_file = open(output_name+"_lag.txt", 'w+') # doing it first so any problems arise before threading makes errors a million times more complicated
 
 def adsTwoChannelStream(data_q, plot_q, duration=30,):    
-#    serialport='/dev/tty.usbmodemFA131'   # I think this is the front usb port on my MacBook
     try_ports = ['/dev/tty.usbmodemFA131','/dev/ttyACM0','/dev/ttyACM1']
     working_ports = []
     for port in try_ports:
@@ -76,7 +78,7 @@ def adsTwoChannelStream(data_q, plot_q, duration=30,):
                     run = True      # exit the loop and let's go!
                     print "ONWARDSSSSss!! (2 of 2) \n"
                 else:
-                    print "Sync Phase 2 Failed, starting over (is the Arduino running the right script?)"
+                    print "Sync Phase 2 Failed, starting over\n"
                     going_back_to_gs = 1
         else:
             ser.write("s")
@@ -84,9 +86,7 @@ def adsTwoChannelStream(data_q, plot_q, duration=30,):
             time.sleep(0.1)
             ser.reset_input_buffer()
         if retry > 10:
-            print "Arduino failed 10 times"
-            takedata = False    # Something is wrong with the Arduino connection (probably busy)
-                    
+            print "Arduino failed to sync 10 times, exiting. Is the Arduino code right? Is this code right?"
         # I hope no one hates me for making this whole thing one function, I've had problems making global serial vars
     samplecount = 0
     
@@ -129,7 +129,7 @@ signalextrema=[0,1]
 
 
 if outputfile == True:
-    raw_data_output_file = open(raw_output, 'r+')
+    raw_data_output_file = open(output_name+"_raw.txt", 'r+')
 
 while plot_queue.empty(): # wait till the data starts coming
     if not thread_adsTwoChannelStream.isAlive():
@@ -145,7 +145,7 @@ while time.time() < data_buffer_stop_time:
         sys.exit("Error getting data from Arduino (2)")
     new_data = plot_queue.get(timeout=1)
     if outputfile == True:
-        raw_data_output_file.write(new_data)
+        raw_data_output_file.write(str(new_data))
     channel0y = np.append(channel0y,new_data[0])
     channel1y = np.append(channel1y,new_data[1])
     if alert_time < time.time():
@@ -194,14 +194,13 @@ while not plot_queue.full() and time.time() < data_start_time + acq_time:
         sys.exit("Error getting data from Arduino (3)")
     if not plot_queue.empty():
         new_data = plot_queue.get()
-        if outputfile == True:
-            raw_data_output_file.write(new_data)
+        
         channel0y = np.append(channel0y[1:],new_data[0])
         channel1y = np.append(channel1y[1:],new_data[1])
+        if outputfile == True:
+            new_data.insert(0,time.time()-data_start_time)
+            raw_data_output_file.write(str(new_data)+"\n")
     if time.time()-lastplot > frame_time:
-#        channel0y = channel0y - np.mean(channel0y)# subtracting averages
-#        channel1y = channel1y - np.mean(channel1y)# subtracting averages
-#        signalextrema = [min(np.append(channel0y,channel1y)),max(np.append(channel0y,channel1y))]
         signalextrema = [min(np.append(channel0y,channel1y))-1,max(np.append(channel0y,channel1y))+1]
         axes.set_ylim(signalextrema)
 
@@ -212,7 +211,7 @@ while not plot_queue.full() and time.time() < data_start_time + acq_time:
 #        plottext.set_text('Lag: %s'%(lag))
         plottitle.set_text('Lag: %s'%(lag))
         
-        lag_data.append([time.time()-data_start_time,lag,new_data])
+        lag_data.append([time.time()-data_start_time,lag])
         
         if lagplot == True:
             line3.set_xdata(np.linspace(0,data_buffer_length,len(channel0y))+(lag / samplerate))
@@ -230,9 +229,9 @@ while not plot_queue.full() and time.time() < data_start_time + acq_time:
 
 if plot_queue.full():
     print "Queue full, try increasing the minimum time between frames (frame_time)"
-elif outputfile:
-    with open(outputfile, 'a') as the_file:
-        the_file.write(str(lag_data))
+
+if outputfile:
+    lag_data_output_file.write(str(lag_data))
         
     
 if outputfile == True:
