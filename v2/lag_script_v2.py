@@ -1,6 +1,8 @@
 """
-MAKE IT A FUNCTION!!!
-maybe check out the awkward lag_comp script 
+Future Work:
+    
+- maybe check out the ugly lag_comp script 
+- do we want to have two sensors at each location for noise?
 
 """
 
@@ -217,7 +219,7 @@ if plot:
         line3, = ax.plot(channelx,channel1y, 'k-')
     axes = plt.gca()
     
-    lag=""
+    lag_s=""
     font = {'family': 'serif',
             'color':  'darkred',
             'weight': 'normal',
@@ -226,7 +228,7 @@ if plot:
     plt.xlabel('Time (s)', fontdict=font)
     plt.ylabel('Voltage (mV)', fontdict=font)
     #plottext = plt.text(1.5, 1500, 'Lag: %s'%(lag), fontdict=font)
-    plottitle = plt.title('Lag: %s'%(lag), fontdict=font)
+    plottitle = plt.title('Lag: %s'%(lag_s), fontdict=font)
 
 lastplot = time.time()
     
@@ -246,10 +248,11 @@ while not plot_queue.full() and time.time() < data_start_time + acq_time:
             new_data.insert(0,time.time()-data_start_time)
             raw_data_output_file.write(str(new_data)+"\n")
     if time.time()-lastplot > frame_time:
-        samplerate = len(channel1y)/data_buffer_length
+        samplerate = float(len(channel1y)/data_buffer_length)
         old_data = np.column_stack((channel0y,channel1y))
         lag = lag_xcorr_old(old_data,samplerate)
         lag_data.append([time.time()-data_start_time,lag])
+        lag_s = lag/samplerate
         
         if plot:
             signalextrema = [min(np.append(channel0y,channel1y))-1,max(np.append(channel0y,channel1y))+1]
@@ -258,7 +261,7 @@ while not plot_queue.full() and time.time() < data_start_time + acq_time:
     
     #        lag = lag_xcorr(data=[channel0y,channel1y], samprate=samplerate)[0][0]
     #        plottext.set_text('Lag: %s'%(lag))
-            plottitle.set_text('Lag: %s'%(lag))
+            plottitle.set_text('Lag: %s'%(round(lag_s,4)))
             
             if lagplot == True:
                 line3.set_xdata(np.linspace(0,data_buffer_length,len(channel0y))+(lag / samplerate))
